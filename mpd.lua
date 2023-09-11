@@ -171,7 +171,7 @@ function MPD:send(command)
 end
 
 function MPD:receive()
-  local responseTable = {}
+  local result = {}
   local response, ok, key, value
   local ack, ackCode, ackIndex, ackCommand, ackMessage
 
@@ -184,24 +184,75 @@ function MPD:receive()
       key, value = response:match("(%w-)%: (.*)")
 
       if ack then
-        responseTable.ackCode = tonumber(ackCode)
-        responseTable.ackIndex = tonumber(ackIndex)
-        responseTable.ackCommand = ackCommand
-        responseTable.ackMessage = ackMessage
+        result.code = tonumber(ackCode)
+        result.index = tonumber(ackIndex)
+        result.command = ackCommand
+        result.message = ackMessage
       elseif key == "binary" then
-        responseTable[key] = self.socket:receive(value)
+        result[key] = self.socket:receive(value)
       elseif key then
-        responseTable[key] = value
+        result[key] = value
       end
     end
   until (ack or ok)
 
-  return (ack or ok), responseTable
+  if next(result) then
+    return ok, ack, result
+  else
+    return ok, ack
+  end
 end
 
 function MPD:close()
   self.socket:close()
 end
 
+function MPD:clearError()
+  self:send("clearerror")
+  local _, ack, result = self:receive()
+
+  if ack and result then
+    return error(result.message)
+  end
+end
+
+function MPD:currentSong()
+  self:send("currentsong")
+
+  local ok, ack, result = self:receive()
+  local finalTable = {}
+
+  if ok then
+    if result then
+      finalTable.file = result.file
+      finalTable.id = tonumber(result.Id)
+      finalTable.position = tonumber(result.Pos)
+      finalTable.title = result.Title
+      finalTable.artist = result.Artist
+      finalTable.time = tonumber(result.Time)
+      finalTable.duration = tonumber(result.duration)
+      finalTable.format = result.Format
+      finalTable.modified = result.Modified
+      return finalTable
+    else
+      return nil
+    end
+  end
+
+  if ack and result then
+    return error(result.message)
+  end
+end
+
+function MPD:idle()
+  -- TODO
+end
+
+MPD = setmetatable(MPD, { __call = MPD.new })
+
+MPD:new()
+MPD:connect()
+p(MPD:clearError())
+MPD:close()
 -- MPD:send("binarylimit 8400896")
-return setmetatable(MPD, { __call = MPD.new })
+return MPD
