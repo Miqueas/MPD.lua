@@ -133,7 +133,9 @@ local function grabEnv()
   }
 end
 
-local MPD = {}
+local MPD = {
+  MAX_BINARY_LIMIT = 8400896
+}
 
 function MPD:new(host, port, settings)
   local env = grabEnv()
@@ -312,7 +314,6 @@ function MPD:stats()
 
   local ok, ack, _result = self:receive()
   local result = {}
-  p(_result)
 
   test(not ack, (_result) and _result.message or "unknown error")
 
@@ -331,11 +332,4 @@ function MPD:stats()
   end
 end
 
-MPD = setmetatable(MPD, { __call = MPD.new })
-
-MPD:new()
-MPD:connect()
-p(MPD:stats())
-MPD:close()
--- MPD:send("binarylimit 8400896")
-return MPD
+return setmetatable(MPD, { __call = MPD.new })
