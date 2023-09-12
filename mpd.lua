@@ -332,4 +332,16 @@ function MPD:stats()
   end
 end
 
+function MPD:consume(setting)
+  checkArg(1, setting, "boolean")
+
+  if setting then
+    self:send("consume 1")
+  else
+    self:send("consume 0")
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })

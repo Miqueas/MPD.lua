@@ -11,5 +11,7 @@ p(mpd:clearError())
 p(mpd:currentSong())
 p(mpd:status())
 p(mpd:stats())
+p(mpd:consume(true))
+p(mpd:consume(false))
 
 mpd:close()
