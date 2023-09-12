@@ -12,7 +12,7 @@ Well, the most important things I need to do are:
 
  - Test the library to find errors and take care of them
  - Add support for (at least) http(s) connections
- - Add shortcut methods for all the commands
+ - Add shortcut methods for all the commands __(In Progress)__
 
 ## How to use
 
