@@ -13,5 +13,6 @@ p(mpd:status())
 p(mpd:stats())
 p(mpd:consume(true))
 p(mpd:consume(false))
+p(mpd:crossFade(10))
 
 mpd:close()

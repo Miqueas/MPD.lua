@@ -332,15 +332,22 @@ function MPD:stats()
   end
 end
 
-function MPD:consume(setting)
-  checkArg(1, setting, "boolean")
+function MPD:consume(state)
+  state = optArg(1, state, "boolean", false)
 
-  if setting then
+  if state then
     self:send("consume 1")
   else
     self:send("consume 0")
   end
 
+  return self:receive()
+end
+
+function MPD:crossFade(seconds)
+  seconds = optArg(1, seconds, "number", 0)
+
+  self:send(("crossfade %d"):format(seconds))
   return self:receive()
 end
 
