@@ -181,7 +181,7 @@ function MPD:receive()
     if response then
       ok = response:match("^OK$")
       ack, ackCode, ackIndex, ackCommand, ackMessage = response:match("(ACK) %[([0-9]-)%@([0-9]-)%] %{(%w-)%} (.*)")
-      key, value = response:match("(%w-)%: (.*)")
+      key, value = response:match("([_%w]-)%: (.*)")
 
       if ack then
         result.code = tonumber(ackCode)
@@ -209,38 +209,32 @@ end
 
 function MPD:clearError()
   self:send("clearerror")
-  local _, ack, result = self:receive()
-
-  if ack and result then
-    return error(result.message)
-  end
+  local _, ack, _result = self:receive()
+  test(not ack, (_result) and _result.message or "unknown error")
+  return nil
 end
 
 function MPD:currentSong()
   self:send("currentsong")
 
-  local ok, ack, result = self:receive()
-  local finalTable = {}
+  local ok, ack, _result = self:receive()
+  local result = {}
 
-  if ok then
-    if result then
-      finalTable.file = result.file
-      finalTable.id = tonumber(result.Id)
-      finalTable.position = tonumber(result.Pos)
-      finalTable.title = result.Title
-      finalTable.artist = result.Artist
-      finalTable.time = tonumber(result.Time)
-      finalTable.duration = tonumber(result.duration)
-      finalTable.format = result.Format
-      finalTable.modified = result.Modified
-      return finalTable
-    else
-      return nil
-    end
-  end
+  test(not ack, (_result) and _result.message or "unknown error")
 
-  if ack and result then
-    return error(result.message)
+  if ok and _result then
+    result.file = _result.file
+    result.id = tonumber(_result.Id)
+    result.position = tonumber(_result.Pos)
+    result.title = _result.Title
+    result.artist = _result.Artist
+    result.time = tonumber(_result.Time)
+    result.duration = tonumber(_result.duration)
+    result.format = _result.Format
+    result.modified = _result.Modified
+    return result
+  else
+    return nil
   end
 end
 
@@ -248,11 +242,100 @@ function MPD:idle()
   -- TODO
 end
 
+function MPD:status()
+  self:send("status")
+  local ok, ack, _result = self:receive()
+  local result = {}
+
+  test(not ack, (_result) and _result.message or "unknown error")
+
+  if ok and _result then
+    result.partition = _result.partition
+    -- This is marked as deprecated in the docs, but the status command still 
+    -- returns it
+    result.volume = tonumber(_result.volume)
+
+    if tonumber(_result["repeat"]) == 0 then
+      result.replay = false
+    else
+      result.replay = true
+    end
+
+    if tonumber(_result.random) == 0 then
+      result.random = false
+    else
+      result.random = true
+    end
+
+    if tonumber(_result.single) == 0 then
+      result.single = false
+    elseif tonumber(_result.single) == 1 then
+      result.single = true
+    else
+      result.single = _result.single
+    end
+
+    if tonumber(_result.consume) == 0 then
+      result.consume = false
+    elseif tonumber(_result.consume) == 1 then
+      result.consume = true
+    else
+      result.consume = _result.consume
+    end
+
+    result.playlist = tonumber(_result.playlist)
+    result.playlistLength = tonumber(_result.playlistlength)
+    result.state = _result.state
+    result.song = tonumber(_result.song)
+    result.songID = tonumber(_result.songid)
+    result.nextSong = tonumber(_result.nextsong)
+    result.nextSongID = tonumber(_result.nextsongid)
+    -- Also marked as deprecated, but it's still in the response
+    result.time = tonumber(_result.time) or 0
+    result.elapsed = tonumber(_result.elapsed)
+    result.duration = tonumber(_result.duration)
+    result.bitRate = tonumber(_result.bitrate)
+    result.xFade = tonumber(_result.xfade)
+    result.mixRampDB = tonumber(_result.mixrampdb)
+    result.mixRampDelay = tonumber(_result.mixrampdelay)
+    result.audio = _result.audio
+    result.error = _result.error
+
+    return result
+  else
+    return nil
+  end
+end
+
+function MPD:stats()
+  self:send("stats")
+
+  local ok, ack, _result = self:receive()
+  local result = {}
+  p(_result)
+
+  test(not ack, (_result) and _result.message or "unknown error")
+
+  if ok and _result then
+    result.artists = tonumber(_result.artists)
+    result.albums = tonumber(_result.albums)
+    result.songs = tonumber(_result.songs)
+    result.uptime = tonumber(_result.uptime)
+    result.dbPlaytime = tonumber(_result.db_playtime)
+    result.dbUpdate = tonumber(_result.db_update)
+    result.playtime = tonumber(_result.playtime)
+
+    return result
+  else
+    return nil
+  end
+end
+
 MPD = setmetatable(MPD, { __call = MPD.new })
 
 MPD:new()
 MPD:connect()
-p(MPD:clearError())
+p(MPD:stats())
 MPD:close()
 -- MPD:send("binarylimit 8400896")
 return MPD
