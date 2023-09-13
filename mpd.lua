@@ -351,4 +351,42 @@ function MPD:crossFade(seconds)
   return self:receive()
 end
 
+function MPD:mixRampDB(deciBels)
+  deciBels = optArg(1, deciBels, "number", 0)
+
+  self:send(("mixrampdb %d"):format(deciBels))
+  return self:receive()
+end
+
+function MPD:mixRampDelay(seconds)
+  seconds = optArg(1, seconds, "number", 0)
+
+  self:send(("mixrampdelay %d"):format(seconds))
+  return self:receive()
+end
+
+function MPD:random(state)
+  state = optArg(1, state, "number", 0)
+
+  if state then
+    self:send("random 1")
+  else
+    self:send("random 0")
+  end
+
+  return self:receive()
+end
+
+function MPD:replay(state)
+  state = optArg(1, state, "number", 0)
+
+  if state then
+    self:send("repeat 1")
+  else
+    self:send("repeat 0")
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
