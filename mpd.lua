@@ -389,4 +389,26 @@ function MPD:replay(state)
   return self:receive()
 end
 
+function MPD:setVol(vol)
+  checkArg(1, vol, "number")
+
+  if vol >= 0 and vol <= 100 then
+    self:send(("setvol %d"):format(vol))
+  else
+    -- TODO: volume out of range
+  end
+
+  return self:receive()
+end
+
+function MPD:getVol()
+  self:send("getvol")
+
+  local ok, ack, result = self:receive()
+
+  if ok and result then
+    return result.volume
+  end
+end
+
 return setmetatable(MPD, { __call = MPD.new })
