@@ -423,4 +423,22 @@ function MPD:single(state)
   return self:receive()
 end
 
+function MPD:replayGainMode(mode)
+  mode = optArg(1, mode, "string", "off")
+
+  if mode == "off" then
+    self:send("replay_gain_mode off")
+  elseif mode == "track" then
+    self:send("replay_gain_mode track")
+  elseif mode == "album" then
+    self:send("replay_gain_mode album")
+  elseif mode == "auto" then
+    self:send("replay_gain_mode auto")
+  else
+    -- TODO: handle unsupported replay gain mode
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
