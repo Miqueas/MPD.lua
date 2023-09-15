@@ -456,4 +456,20 @@ function MPD:next()
   return self:receive()
 end
 
+function MPD:pause(state)
+  state = optArg(1, state, "boolean", nil)
+
+  if state ~= nil then
+    if state then
+      self:send("pause 1")
+    else
+      self:send("pause 0")
+    end
+  else
+    self:send("pause")
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
