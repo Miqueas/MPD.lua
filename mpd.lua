@@ -411,4 +411,16 @@ function MPD:getVol()
   end
 end
 
+function MPD:single(state)
+  state = optArg(1, state, "boolean", false)
+
+  if state then
+    self:send("single 1")
+  else
+    self:send("single 0")
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
