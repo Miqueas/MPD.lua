@@ -446,4 +446,9 @@ function MPD:replayGainStatus()
   return self:receive()
 end
 
+-- Marked as deprecated, use `:setVol(vol)` instead
+function MPD:volume(change)
+  return self:setVol(change)
+end
+
 return setmetatable(MPD, { __call = MPD.new })
