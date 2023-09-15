@@ -451,4 +451,9 @@ function MPD:volume(change)
   return self:setVol(change)
 end
 
+function MPD:next()
+  self:send("next")
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
