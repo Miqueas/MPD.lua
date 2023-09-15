@@ -441,4 +441,9 @@ function MPD:replayGainMode(mode)
   return self:receive()
 end
 
+function MPD:replayGainStatus()
+  self:send("replay_gain_status")
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
