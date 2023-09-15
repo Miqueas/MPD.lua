@@ -472,4 +472,16 @@ function MPD:pause(state)
   return self:receive()
 end
 
+function MPD:play(songPosition)
+  songPosition = optArg(1, songPosition, "number", nil)
+
+  if songPosition then
+    self:send(("play %d"):format(songPosition))
+  else
+    self:send("play")
+  end
+
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
