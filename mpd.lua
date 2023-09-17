@@ -484,4 +484,9 @@ function MPD:play(songPosition)
   return self:receive()
 end
 
+function MPD:stop()
+  self:send("stop")
+  return self:receive()
+end
+
 return setmetatable(MPD, { __call = MPD.new })
