@@ -15,27 +15,21 @@ local socket = require("socket")
 
 -- client:close()
 
--- 0x1b, see the Wikipedia link above
+--- 0x1b: see the Wikipedia link below in `isWin`
 local ESC = string.char(27)
 
+--- `true` if OS is Windows, `false` otherwise.
 --- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc:
---- `true` if OS is Windows, `false` otherwise
 --- @type boolean
-local isWin = os.getenv("OS") ~= nil
+local isWindows = os.getenv("OS") ~= nil
 
 --- Helper function to create color escape-codes. Read this for more info:
---- https://en.wikipedia.org/wiki/ANSI_escape_code.
---- One or more numbers/strings expected
+--- https://en.wikipedia.org/wiki/ANSI_escape_code. One or more numbers/strings expected
 --- @vararg number | string
 --- @return string
-local function e(...)
-  return ESC .. "[" .. table.concat({ ... }, ";") .. "m"
-end
+local function e(...) return ESC .. "[" .. table.concat({ ... }, ";") .. "m" end
 
---[[======== PRIVATE ========]]
-
---- A simple custom version of `assert()` with built-in
---- `string.format()` support
+--- A simple custom version of `assert()` with built-in `string.format()` support
 --- @generic Expr
 --- @param exp Expr Expression to evaluate
 --- @param msg string Error message to print
@@ -52,52 +46,52 @@ local function test(exp, msg, ...)
 end
 
 --- Argument type checking function
---- @generic Any
 --- @generic Type
 --- @param argn number The argument position in function
---- @param argv Any The argument to check
+--- @param argv any The argument to check
 --- @param expected Type The type expected (`string`)
---- @return nil
-local function checkArg(argn, argv, expected)
-  local argt = type(argv)
-  local msgt = "bad argument #%s, `%s` expected, got `%s`"
+local function requiredArgument(argn, argv, expected)
+  local argType = type(argv)
+  local messageTemplate = "bad argument #%s, `%s` expected, got `%s`"
 
-  if argt ~= expected then
-    error(msgt:format(argn, expected, argt))
+  if argType ~= expected then
+    error(messageTemplate:format(argn, expected, argType))
   end
 end
 
---- Same as `check_arg()`, except that this don't throw
---- and error if the argument is `nil`
---- @generic Any
+--- Same as `check_arg()`, except that this don't throw an error if the argument is `nil`
 --- @generic Type
 --- @param argn number The argument position in function
---- @param argv Any The argument to check
+--- @param argv? any The argument to check
 --- @param expected Type The type expected (`string`)
---- @return Any
-local function optArg(argn, argv, expected, default)
-  local argt = type(argv)
-  local msgt = "bad argument #%s, `%s` or `nil` expected, got `%s`"
+--- @return any default If `argv` is `nil`, `default` is returned
+local function optionalArgument(argn, argv, expected, default)
+  local argType = type(argv)
+  local messageTemplate = "bad argument #%s, `%s` or `nil` expected, got `%s`"
 
-  if argt ~= expected then
-    if argt == "nil" then
+  if argType ~= expected then
+    if argType == "nil" then
       return default
     else
-      error(msgt:format(argn, expected, argt))
+      error(messageTemplate:format(argn, expected, argType))
     end
   end
 
   return argv
 end
 
---- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc:
---- Path to the temp directory
---- @type string
-local tempDir = isWin and os.getenv("UserProfile") .. "/AppData/Local/Temp" or "/tmp"
+local function mixedArgument()
+  
+end
 
---- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc:
---- Return `true` if `filename` exists
---- @param path string The path to the file
+--- Path to the temp directory.
+--- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc
+--- @type string
+local tempFolder = isWindows and os.getenv("UserProfile") .. "/AppData/Local/Temp" or "/tmp"
+
+--- Return `true` if `filename` exists.
+--- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc
+--- @param path string The path to the file/folder
 --- @return boolean
 local function pathExists(path)
   local ok, _, code = os.rename(path, path)
@@ -110,11 +104,11 @@ local function pathExists(path)
   return ok ~= nil
 end
 
---- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc:
---- Check if a directory exists in this path
+--- Check if a directory exists in this path.
+--- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc
 --- @return boolean
-local function isDir(path)
-  if isWin then
+local function isDirectory(path)
+  if isWindows then
     return pathExists(path .. "/")
   end
 
@@ -140,9 +134,9 @@ local MPD = {
 function MPD:new(host, port, settings)
   local env = grabEnv()
 
-  host = optArg(1, host, "string", env.host or "localhost")
-  port = optArg(2, port, "number", env.port or 6600)
-  settings = optArg(3, settings, "table", {})
+  host = optionalArgument(1, host, "string", env.host or "localhost")
+  port = optionalArgument(2, port, "number", env.port or 6600)
+  settings = optionalArgument(3, settings, "table", {})
 
   self.host = host
   self.port = port
@@ -165,10 +159,17 @@ function MPD:connect()
   return self.version
 end
 
-function MPD:send(command)
-  checkArg(1, command, "string")
+--- @param command string|table
+--- @param ... any
+function MPD:send(command, ...)
+  requiredArgument(1, command, "string")
 
-  command = ("%s\n"):format(command)
+  local vaArgs = { ... }
+
+  for i, v in ipairs(vaArgs) do
+    vaArgs[i] = tostring(v)
+  end
+
   self.socket:send(command)
 end
 
@@ -333,7 +334,7 @@ function MPD:stats()
 end
 
 function MPD:consume(state)
-  state = optArg(1, state, "boolean", false)
+  state = optionalArgument(1, state, "boolean", false)
 
   if state then
     self:send("consume 1")
@@ -345,28 +346,28 @@ function MPD:consume(state)
 end
 
 function MPD:crossFade(seconds)
-  seconds = optArg(1, seconds, "number", 0)
+  seconds = optionalArgument(1, seconds, "number", 0)
 
   self:send(("crossfade %d"):format(seconds))
   return self:receive()
 end
 
 function MPD:mixRampDB(deciBels)
-  deciBels = optArg(1, deciBels, "number", 0)
+  deciBels = optionalArgument(1, deciBels, "number", 0)
 
   self:send(("mixrampdb %d"):format(deciBels))
   return self:receive()
 end
 
 function MPD:mixRampDelay(seconds)
-  seconds = optArg(1, seconds, "number", 0)
+  seconds = optionalArgument(1, seconds, "number", 0)
 
   self:send(("mixrampdelay %d"):format(seconds))
   return self:receive()
 end
 
 function MPD:random(state)
-  state = optArg(1, state, "number", 0)
+  state = optionalArgument(1, state, "number", 0)
 
   if state then
     self:send("random 1")
@@ -378,7 +379,7 @@ function MPD:random(state)
 end
 
 function MPD:replay(state)
-  state = optArg(1, state, "number", 0)
+  state = optionalArgument(1, state, "number", 0)
 
   if state then
     self:send("repeat 1")
@@ -390,7 +391,7 @@ function MPD:replay(state)
 end
 
 function MPD:setVol(vol)
-  checkArg(1, vol, "number")
+  requiredArgument(1, vol, "number")
 
   if vol >= 0 and vol <= 100 then
     self:send(("setvol %d"):format(vol))
@@ -412,7 +413,7 @@ function MPD:getVol()
 end
 
 function MPD:single(state)
-  state = optArg(1, state, "boolean", false)
+  state = optionalArgument(1, state, "boolean", false)
 
   if state then
     self:send("single 1")
@@ -424,7 +425,7 @@ function MPD:single(state)
 end
 
 function MPD:replayGainMode(mode)
-  mode = optArg(1, mode, "string", "off")
+  mode = optionalArgument(1, mode, "string", "off")
 
   if mode == "off" then
     self:send("replay_gain_mode off")
@@ -457,7 +458,7 @@ function MPD:next()
 end
 
 function MPD:pause(state)
-  state = optArg(1, state, "boolean", nil)
+  state = optionalArgument(1, state, "boolean", nil)
 
   if state ~= nil then
     if state then
@@ -473,7 +474,7 @@ function MPD:pause(state)
 end
 
 function MPD:play(songPosition)
-  songPosition = optArg(1, songPosition, "number", nil)
+  songPosition = optionalArgument(1, songPosition, "number", nil)
 
   if songPosition then
     self:send(("play %d"):format(songPosition))
@@ -482,6 +483,25 @@ function MPD:play(songPosition)
   end
 
   return self:receive()
+end
+
+function MPD:playID(songID)
+  songID = requiredArgument(1, songID, "number")
+  self:send("playid ")
+end
+
+function MPD:previous()
+  self:send("previous")
+  return self:receive()
+end
+
+function MPD:seek(songPosition, time)
+end
+
+function MPD:seekID()
+end
+
+function MPD:seekCurrent(time)
 end
 
 function MPD:stop()
