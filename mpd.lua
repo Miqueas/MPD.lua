@@ -1,19 +1,4 @@
 local socket = require("socket")
--- local client = socket.tcp()
--- client:settimeout(10000, "t")
--- client:connect("localhost", 6600)
-
--- print(client:receive("*l"))
--- client:send("stop\n")
-
--- local res = ""
-
--- repeat
---   res = client:receive("*l")
---   print(res)
--- until res == "OK"
-
--- client:close()
 
 --- 0x1b: see the Wikipedia link below in `isWin`
 local ESC = string.char(27)
@@ -80,10 +65,6 @@ local function optionalArgument(argn, argv, expected, default)
   return argv
 end
 
-local function mixedArgument()
-  
-end
-
 --- Path to the temp directory.
 --- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc
 --- @type string
@@ -104,8 +85,9 @@ local function pathExists(path)
   return ok ~= nil
 end
 
---- Check if a directory exists in this path.
+--- Check if the given path is a directory.
 --- From my Gist: https://gist.github.com/Miqueas/53cf4344575ccedbf264010442a21dcc
+--- @param path string The path to the folder
 --- @return boolean
 local function isDirectory(path)
   if isWindows then
@@ -148,7 +130,8 @@ function MPD:connect()
   self.socket:settimeout(self.timeout, "t")
   self.connected = self.socket:connect(self.host, self.port) and true or false
 
-  local response = self.socket:receive("*l")
+  -- By default, `receive()` will read the response line by line
+  local response = self.socket:receive()
 
   if response then
     self.version = response:match("OK MPD ([0-9%.]+)")
@@ -170,7 +153,7 @@ function MPD:send(command, ...)
     vaArgs[i] = tostring(v)
   end
 
-  self.socket:send(command)
+  self.socket:send(command .. "\n")
 end
 
 function MPD:receive()
@@ -179,7 +162,7 @@ function MPD:receive()
   local ack, ackCode, ackIndex, ackCommand, ackMessage
 
   repeat
-    response = self.socket:receive("*l")
+    response = self.socket:receive()
 
     if response then
       ok = response:match("^OK$")
