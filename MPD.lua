@@ -1,4 +1,5 @@
 local socket = require("socket")
+local class  = require("Self")
 
 --- 0x1b: see the Wikipedia link below in `isWin`
 local ESC = string.char(27)
@@ -109,8 +110,14 @@ local function grabEnv()
   }
 end
 
-local MPD = {
-  MAX_BINARY_LIMIT = 8400896
+local MPD = class {
+  MAX_BINARY_LIMIT = 8400896,
+  host = "",
+  port = 0,
+  timeout = 0,
+  socket = false,
+  connected = false,
+  version = ""
 }
 
 function MPD:new(host, port, settings)
@@ -126,7 +133,10 @@ function MPD:new(host, port, settings)
 end
 
 function MPD:connect()
-  self.socket = socket.tcp()
+  local errorMessage
+
+  self.socket, errorMessage = socket.tcp()
+
   self.socket:settimeout(self.timeout, "t")
   self.connected = self.socket:connect(self.host, self.port) and true or false
 
@@ -492,4 +502,4 @@ function MPD:stop()
   return self:receive()
 end
 
-return setmetatable(MPD, { __call = MPD.new })
+return MPD
