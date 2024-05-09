@@ -523,34 +523,45 @@ function MPD:getVol()
   end
 end
 
-function MPD:single(state)
-  state = optionalArgument(1, state, "boolean", false)
+--- Sets `single` to enabled or disabled from `setting`.
+--- In case of error, returns `nil` and an error message.
+--- @param setting boolean?
+--- @return boolean?, string?
+function MPD:single(setting)
+  setting = checkArg(1, setting, "boolean", false)
 
-  if state then
-    self:send("single 1")
-  else
-    self:send("single 0")
+  self:send("single %d", setting and 1 or 0)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then return response.ok, response.message end
 end
 
+--- Sets the MPD replay gain mode to `mode`.
+--- In case of error, returns `nil` and an error message.
+--- @param mode? "off"|"track"|"album"|"auto"
+--- @return number?, string?
 function MPD:replayGainMode(mode)
-  mode = optionalArgument(1, mode, "string", "off")
+  mode = checkArg(1, mode, { "string", "nil" }, "off")
+  
+  local supportedMode = mode == "off" or mode == "track" or mode == "album" or mode == "auto"
+  test(supportedMode, "Error: unsupported replay gain mode '%s'", mode)
 
-  if mode == "off" then
-    self:send("replay_gain_mode off")
-  elseif mode == "track" then
-    self:send("replay_gain_mode track")
-  elseif mode == "album" then
-    self:send("replay_gain_mode album")
-  elseif mode == "auto" then
-    self:send("replay_gain_mode auto")
-  else
-    -- TODO: handle unsupported replay gain mode
+  self:send("replay_gain_mode %s", mode)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then return response.ok, response.message end
 end
 
 function MPD:replayGainStatus()
