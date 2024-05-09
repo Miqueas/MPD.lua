@@ -1,5 +1,4 @@
 local socket = require("socket")
-local class  = require("Self")
 
 --- 0x1b: see the Wikipedia link below in `isWin`
 local ESC = string.char(27)
@@ -29,41 +28,6 @@ local function test(exp, msg, ...)
   end
 
   return exp
-end
-
---- Argument type checking function
---- @generic Type
---- @param argn number The argument position in function
---- @param argv any The argument to check
---- @param expected Type The type expected (`string`)
-local function requiredArgument(argn, argv, expected)
-  local argType = type(argv)
-  local messageTemplate = "bad argument #%s, `%s` expected, got `%s`"
-
-  if argType ~= expected then
-    error(messageTemplate:format(argn, expected, argType))
-  end
-end
-
---- Same as `check_arg()`, except that this don't throw an error if the argument is `nil`
---- @generic Type
---- @param argn number The argument position in function
---- @param argv? any The argument to check
---- @param expected Type The type expected (`string`)
---- @return any default If `argv` is `nil`, `default` is returned
-local function optionalArgument(argn, argv, expected, default)
-  local argType = type(argv)
-  local messageTemplate = "bad argument #%s, `%s` or `nil` expected, got `%s`"
-
-  if argType ~= expected then
-    if argType == "nil" then
-      return default
-    else
-      error(messageTemplate:format(argn, expected, argType))
-    end
-  end
-
-  return argv
 end
 
 --- Path to the temp directory.
@@ -98,6 +62,36 @@ local function isDirectory(path)
   return (io.open(path .. "/") == nil) and false or true
 end
 
+--- Check if the given value is of one of the desired types.
+--- If true, the value is returned, otherwise an error is thrown.
+--- @param index number The position of the parameter in the function
+--- @param value any The parameter in question
+--- @param T string|table The type(s) expected
+--- @param default any The default value if necessary
+--- @return any value The value in case it's valid
+local function checkArg(index, value, T, default)
+  local valueType = type(value)
+  local typeOfT = type(T)
+  local errorMessageTemplate = "bad argument #%s, %s expected, got `%s`"
+
+  if typeOfT == "string" then
+    test(valueType == T, errorMessageTemplate, index, "`" .. T .. "`", valueType)
+  elseif typeOfT == "table" then
+    local match = false
+
+    for _, _T in ipairs(T) do
+      if valueType == _T then
+        match = true
+        break
+      end
+    end
+
+    test(match, errorMessageTemplate, index, "`" .. table.concat(T, "` or `") .. "`", valueType)
+  end
+
+  return (value == nil) and default or value
+end
+
 local function grabEnv()
   local port = tonumber(os.getenv("MPD_PORT"))
   local host = os.getenv("MPD_HOST")
@@ -110,253 +104,341 @@ local function grabEnv()
   }
 end
 
-local MPD = class {
+--- The MPD client protocol implementation
+--- @class MPD
+local MPD = {
   MAX_BINARY_LIMIT = 8400896,
-  host = "",
-  port = 0,
-  timeout = 0,
-  socket = false,
-  connected = false,
-  version = ""
+  devel = false
 }
 
-function MPD:new(host, port, settings)
+--- Creates a new MPD client connection.
+--- In case of error, returns `nil` and an error message.
+--- @param host string? The MPD server host
+--- @param port number? The MPD server port
+--- @param settings table? Additional settings
+--- @return boolean?, string?
+function MPD:connect(host, port, settings)
   local env = grabEnv()
 
-  host = optionalArgument(1, host, "string", env.host or "localhost")
-  port = optionalArgument(2, port, "number", env.port or 6600)
-  settings = optionalArgument(3, settings, "table", {})
+  host = checkArg(1, host, { "string", "nil" }, env.host or "localhost")
+  port = checkArg(2, port, { "number", "nil" }, env.port or 6600)
+  settings = checkArg(3, settings, { "table", "nil" }, {})
 
   self.host = host
   self.port = port
   self.timeout = settings.timeout or env.timeout or 1
-end
 
-function MPD:connect()
   local errorMessage
 
   self.socket, errorMessage = socket.tcp()
 
+  if errorMessage then
+    return nil, "Error creating the socket: " .. errorMessage
+  end
+
   self.socket:settimeout(self.timeout, "t")
-  self.connected = self.socket:connect(self.host, self.port) and true or false
+  self.connected, errorMessage = self.socket:connect(self.host, self.port)
 
-  -- By default, `receive()` will read the response line by line
-  local response = self.socket:receive()
+  if errorMessage then
+    return nil, "Error connecting to MPD: " .. errorMessage
+  else self.connected = true end
 
-  if response then
-    self.version = response:match("OK MPD ([0-9%.]+)")
-  else
-    -- TODO
+  local response, errorMessage = self.socket:receive()
+  test(errorMessage == nil, "Error receiving data from MPD: %s", errorMessage)
+
+  if errorMessage then
+    return nil, "Error receiving data from MPD: " .. errorMessage
   end
 
-  return self.version
+  self.version = response:match("OK MPD ([0-9%.]+)")
+
+  return self.connected
 end
 
---- @param command string|table
+--- Sends a command to the MPD server.
+--- In case of error, returns an error message.
+--- @param command string
 --- @param ... any
+--- @return string?
 function MPD:send(command, ...)
-  requiredArgument(1, command, "string")
+  command = checkArg(1, command, "string")
 
-  local vaArgs = { ... }
+  local errorMessage
+  _, errorMessage = self.socket:send((command .. "\n"):format(...))
 
-  for i, v in ipairs(vaArgs) do
-    vaArgs[i] = tostring(v)
+  if errorMessage then
+    return "Error sending data to MPD: " .. errorMessage
   end
-
-  self.socket:send(command .. "\n")
 end
 
+--- Reads the server response and returns it as a table.
+--- In case of error, returns `nil` and an error message.
+--- @return table?, string?
 function MPD:receive()
   local result = {}
   local response, ok, key, value
   local ack, ackCode, ackIndex, ackCommand, ackMessage
+  local errorMessage
 
   repeat
-    response = self.socket:receive()
+    response, errorMessage = self.socket:receive()
+    test(errorMessage == nil, "Error receiving data from MPD: %s", errorMessage)
 
-    if response then
-      ok = response:match("^OK$")
-      ack, ackCode, ackIndex, ackCommand, ackMessage = response:match("(ACK) %[([0-9]-)%@([0-9]-)%] %{(%w-)%} (.*)")
-      key, value = response:match("([_%w]-)%: (.*)")
-
-      if ack then
-        result.code = tonumber(ackCode)
-        result.index = tonumber(ackIndex)
-        result.command = ackCommand
-        result.message = ackMessage
-      elseif key == "binary" then
-        result[key] = self.socket:receive(value)
-      elseif key then
-        result[key] = value
-      end
+    if errorMessage then
+      return nil, "Error receiving data from MPD: " .. errorMessage
     end
-  until (ack or ok)
 
-  if next(result) then
-    return ok, ack, result
-  else
-    return ok, ack
-  end
+    if self.devel then print(response) end
+
+    ack, ackCode, ackIndex, ackCommand, ackMessage = response:match("(ACK) %[([0-9]-)%@([0-9]-)%] %{(%w-)%} (.*)")
+    key, value = response:match("([%w_-]-): (.*)")
+    ok = response:match("^OK$")
+
+    if self.devel then print(([[KEY: %s; VALUE: %s]]):format(key, value)) end
+
+    if ack then
+      result.ok = false
+      result.code = tonumber(ackCode)
+      result.index = tonumber(ackIndex)
+      result.command = ackCommand
+      result.message = ackMessage
+    elseif key ~= nil and key == "binary" then
+      result[key], errorMessage = self.socket:receive(value)
+
+      if errorMessage then
+        return nil, "Error receiving data from MPD: " .. errorMessage
+      end
+    elseif key ~= nil and key ~= "binary" then
+      result[key] = value
+    else
+      result.ok = true
+    end
+  until ack or ok
+
+  return result
 end
 
+--- Closes the connection to the MPD server.
 function MPD:close()
   self.socket:close()
+  self.connected = false
 end
 
+--- Clears the current error on the server. All commands calls this when used, so you don't have to.
 function MPD:clearError()
   self:send("clearerror")
-  local _, ack, _result = self:receive()
-  test(not ack, (_result) and _result.message or "unknown error")
-  return nil
+  self:receive()
 end
 
+--- Returns the current song.
+--- In case of error, returns `nil` and an error message.
+--- @return table?, string?
 function MPD:currentSong()
   self:send("currentsong")
 
-  local ok, ack, _result = self:receive()
   local result = {}
+  local response, errorMessage = self:receive()
 
-  test(not ack, (_result) and _result.message or "unknown error")
-
-  if ok and _result then
-    result.file = _result.file
-    result.id = tonumber(_result.Id)
-    result.position = tonumber(_result.Pos)
-    result.title = _result.Title
-    result.artist = _result.Artist
-    result.time = tonumber(_result.Time)
-    result.duration = tonumber(_result.duration)
-    result.format = _result.Format
-    result.modified = _result.Modified
-    return result
-  else
-    return nil
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
+  
+  if response then
+    if not response.ok then
+      -- Server returned an error
+      return nil, response.message
+    else -- All good
+      result.id = tonumber(response.Id)
+      result.file = response.file
+      result.title = response.Title
+      result.artist = response.Artist
+      result.position = tonumber(response.Pos)
+      result.time = tonumber(response.Time)
+      result.duration = tonumber(response.duration)
+      result.format = response.Format
+      result.modified = response.Modified
+    end
+  end
+
+  return result
 end
 
 function MPD:idle()
-  -- TODO
+  -- TODO: implement a way to keep receiving changes from the server
 end
 
+--- Queries the MPD server status.
+--- In case of error, returns `nil` and an error message.
+--- @return table?, string?
 function MPD:status()
   self:send("status")
-  local ok, ack, _result = self:receive()
+
   local result = {}
+  local response, errorMessage = self:receive()
 
-  test(not ack, (_result) and _result.message or "unknown error")
-
-  if ok and _result then
-    result.partition = _result.partition
-    -- This is marked as deprecated in the docs, but the status command still 
-    -- returns it
-    result.volume = tonumber(_result.volume)
-
-    if tonumber(_result["repeat"]) == 0 then
-      result.replay = false
-    else
-      result.replay = true
-    end
-
-    if tonumber(_result.random) == 0 then
-      result.random = false
-    else
-      result.random = true
-    end
-
-    if tonumber(_result.single) == 0 then
-      result.single = false
-    elseif tonumber(_result.single) == 1 then
-      result.single = true
-    else
-      result.single = _result.single
-    end
-
-    if tonumber(_result.consume) == 0 then
-      result.consume = false
-    elseif tonumber(_result.consume) == 1 then
-      result.consume = true
-    else
-      result.consume = _result.consume
-    end
-
-    result.playlist = tonumber(_result.playlist)
-    result.playlistLength = tonumber(_result.playlistlength)
-    result.state = _result.state
-    result.song = tonumber(_result.song)
-    result.songID = tonumber(_result.songid)
-    result.nextSong = tonumber(_result.nextsong)
-    result.nextSongID = tonumber(_result.nextsongid)
-    -- Also marked as deprecated, but it's still in the response
-    result.time = tonumber(_result.time) or 0
-    result.elapsed = tonumber(_result.elapsed)
-    result.duration = tonumber(_result.duration)
-    result.bitRate = tonumber(_result.bitrate)
-    result.xFade = tonumber(_result.xfade)
-    result.mixRampDB = tonumber(_result.mixrampdb)
-    result.mixRampDelay = tonumber(_result.mixrampdelay)
-    result.audio = _result.audio
-    result.error = _result.error
-
-    return result
-  else
-    return nil
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
+
+  if response then
+    if not response.ok then
+      -- Server returned an error
+      return nil, response.message
+    else -- All good
+      result.partition = response.partition
+      result.volume = tonumber(response.volume)
+      result.replay = (tonumber(response["repeat"]) ~= 0) and true or false
+      result.random = (tonumber(response.random) ~= 0) and true or false
+
+      if tonumber(response.single) == 0 then
+        result.single = false
+      elseif tonumber(response.single) == 1 then
+        result.single = true
+      else -- It's a string ("oneshot")
+        result.single = response.single
+      end
+
+      if tonumber(response.consume) == 0 then
+        result.consume = false
+      elseif tonumber(response.consume) == 1 then
+        result.consume = true
+      else -- It's a string ("oneshot")
+        result.consume = response.consume
+      end
+
+      result.playlist = tonumber(response.playlist)
+      result.playlistLength = tonumber(response.playlistlength)
+      result.state = response.state
+      result.song = tonumber(response.song)
+      result.songID = tonumber(response.songid)
+      result.nextSong = tonumber(response.nextsong)
+      result.nextSongID = tonumber(response.nextsongid)
+      result.time = tonumber(response.time)
+      result.elapsed = tonumber(response.elapsed)
+      result.duration = tonumber(response.duration)
+      result.bitRate = tonumber(response.bitrate)
+      result.crossFade = tonumber(response.xfade)
+      result.mixRampDB = tonumber(response.mixrampdb)
+      result.mixRampDelay = tonumber(response.mixrampdelay)
+      result.audio = response.audio
+      result.error = response.error
+    end
+  end
+
+  return result
 end
 
+--- Queries the MPD server statistics.
+--- In case of error, returns `nil` and an error message.
+--- @return table?, string?
 function MPD:stats()
   self:send("stats")
 
-  local ok, ack, _result = self:receive()
   local result = {}
+  local response, errorMessage = self:receive()
 
-  test(not ack, (_result) and _result.message or "unknown error")
-
-  if ok and _result then
-    result.artists = tonumber(_result.artists)
-    result.albums = tonumber(_result.albums)
-    result.songs = tonumber(_result.songs)
-    result.uptime = tonumber(_result.uptime)
-    result.dbPlaytime = tonumber(_result.db_playtime)
-    result.dbUpdate = tonumber(_result.db_update)
-    result.playtime = tonumber(_result.playtime)
-
-    return result
-  else
-    return nil
-  end
-end
-
-function MPD:consume(state)
-  state = optionalArgument(1, state, "boolean", false)
-
-  if state then
-    self:send("consume 1")
-  else
-    self:send("consume 0")
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then
+    if not response.ok then
+      -- Server returned an error
+      return nil, response.message
+    else
+      result.artists = tonumber(response.artists)
+      result.albums = tonumber(response.albums)
+      result.songs = tonumber(response.songs)
+      result.uptime = tonumber(response.uptime)
+      result.dbPlaytime = tonumber(response.db_playtime)
+      result.dbUpdate = tonumber(response.db_update)
+      result.playtime = tonumber(response.playtime)
+    end
+  end
+
+  return result
 end
 
+--- Sets `consume` to enabled or disabled from `setting`.
+--- In case of error, returns `nil` and an error message.
+--- @param setting boolean?
+--- @return boolean?, string?
+function MPD:consume(setting)
+  setting = checkArg(1, setting, { "boolean", "nil" }, false)
+
+  self:send("consume %d", (setting and 1 or 0))
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
+  end
+
+  if response then return response.ok, response.message end
+end
+
+--- Sets the crossfade time to `seconds`.
+--- In case of error, returns `nil` and an error message.
+--- @param seconds number?
+--- @return boolean?, string?
 function MPD:crossFade(seconds)
-  seconds = optionalArgument(1, seconds, "number", 0)
+  seconds = checkArg(1, seconds, { "number", "nil"}, 0)
 
-  self:send(("crossfade %d"):format(seconds))
-  return self:receive()
+  self:send("crossfade %d", seconds)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
+  end
+
+  if response then return response.ok, response.message end
 end
 
-function MPD:mixRampDB(deciBels)
-  deciBels = optionalArgument(1, deciBels, "number", 0)
+--- Sets the threshold at which songs will be overlapped to `deciBels`.
+--- See https://mpd.readthedocs.io/en/latest/user.html#mixramp for more information.
+--- In case of error, returns `nil` and an error message.
+--- @param decibels number?
+--- @return boolean?, string?
+function MPD:mixRampDB(decibels)
+  decibels = checkArg(1, decibels, { "number", "nil" }, 0)
 
-  self:send(("mixrampdb %d"):format(deciBels))
-  return self:receive()
+  self:send("mixrampdb %d", decibels)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
+  end
+
+  if response then return response.ok, response.message end
 end
 
+--- Sets the additional time subtracted from the overlap calculated by mixrampdb to `seconds`.
+--- `nil` disables MixRamp overlapping and falls back to crossfading.
+--- See https://mpd.readthedocs.io/en/latest/user.html#mixramp for more information.
+--- In case of error, returns `nil` and an error message.
+--- @param seconds number?
+--- @return boolean?, string?
 function MPD:mixRampDelay(seconds)
-  seconds = optionalArgument(1, seconds, "number", 0)
+  seconds = checkArg(1, seconds, { "number", "nil" }, nil)
 
-  self:send(("mixrampdelay %d"):format(seconds))
-  return self:receive()
+  self:send("mixrampdelay %s", tostring(seconds))
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
+  end
+
+  if response then return response.ok, response.message end
 end
 
 function MPD:random(state)
@@ -451,7 +533,8 @@ function MPD:next()
 end
 
 function MPD:pause(state)
-  state = optionalArgument(1, state, "boolean", nil)
+  state = checkArg(1, state, { "boolean", "nil" }, nil)
+  print(state)
 
   if state ~= nil then
     if state then
@@ -502,4 +585,5 @@ function MPD:stop()
   return self:receive()
 end
 
-return MPD
+--                                          __gc: Lua 5.3+, previous versions will ignore it
+return setmetatable(MPD, { __gc = function (self) self:close() end })
