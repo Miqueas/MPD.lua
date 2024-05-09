@@ -401,7 +401,7 @@ function MPD:crossFade(seconds)
 end
 
 --- Sets the threshold at which songs will be overlapped to `deciBels`.
---- See https://mpd.readthedocs.io/en/latest/user.html#mixramp for more information.
+--- See [MixRamp](https://mpd.readthedocs.io/en/latest/user.html#mixramp) for more information.
 --- In case of error, returns `nil` and an error message.
 --- @param decibels number?
 --- @return boolean?, string?
@@ -422,7 +422,7 @@ end
 
 --- Sets the additional time subtracted from the overlap calculated by mixrampdb to `seconds`.
 --- `nil` disables MixRamp overlapping and falls back to crossfading.
---- See https://mpd.readthedocs.io/en/latest/user.html#mixramp for more information.
+--- See [MixRamp](https://mpd.readthedocs.io/en/latest/user.html#mixramp) for more information.
 --- In case of error, returns `nil` and an error message.
 --- @param seconds number?
 --- @return boolean?, string?
