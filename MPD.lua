@@ -369,7 +369,7 @@ end
 function MPD:consume(setting)
   setting = checkArg(1, setting, { "boolean", "nil" }, false)
 
-  self:send("consume %d", (setting and 1 or 0))
+  self:send("consume %d", setting and 1 or 0)
 
   local response, errorMessage = self:receive()
 
@@ -441,49 +441,85 @@ function MPD:mixRampDelay(seconds)
   if response then return response.ok, response.message end
 end
 
-function MPD:random(state)
-  state = optionalArgument(1, state, "number", 0)
+--- Sets `random` to enabled or disabled from `setting`.
+--- In case of error, returns `nil` and an error message.
+--- @param setting boolean?
+--- @return boolean?, string?
+function MPD:random(setting)
+  setting = checkArg(1, setting, { "boolean", "nil" }, false)
 
-  if state then
-    self:send("random 1")
-  else
-    self:send("random 0")
+  self:send("random %d", setting and 1 or 0)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then return response.ok, response.message end
 end
 
-function MPD:replay(state)
-  state = optionalArgument(1, state, "number", 0)
 
-  if state then
-    self:send("repeat 1")
-  else
-    self:send("repeat 0")
+--- Sets `repeat` to enabled or disabled from `setting`.
+--- In case of error, returns `nil` and an error message.
+--- @param setting boolean?
+--- @return boolean?, string?
+function MPD:replay(setting)
+  setting = checkArg(1, setting, "number", false)
+
+  self:send("repeat %d", setting and 1 or 0)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then return response.ok, response.message end
 end
 
-function MPD:setVol(vol)
-  requiredArgument(1, vol, "number")
+--- Sets the MPD server volume to `value`. This method will fail if `value` is not between 0 and 100.
+--- In case of error, returns `nil` and an error message.
+--- @param value number?
+--- @return boolean?, string?
+function MPD:setVolume(value)
+  value = checkArg(1, value, { "number", "nil" }, 100)
 
-  if vol >= 0 and vol <= 100 then
-    self:send(("setvol %d"):format(vol))
-  else
-    -- TODO: volume out of range
+  test(value >= 0 and value <= 100, "Error: volume should be between 0 and 100, but got '%d'", value)
+
+  self:send("setvol %d", value)
+
+  local response, errorMessage = self:receive()
+
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
   end
 
-  return self:receive()
+  if response then return response.ok, response.message end
 end
 
+--- Gets the MPD server volume.
+--- In case of error, returns `nil` and an error message.
+--- @return number?, string?
 function MPD:getVol()
   self:send("getvol")
 
-  local ok, ack, result = self:receive()
+  local response, errorMessage = self:receive()
 
-  if ok and result then
-    return result.volume
+  if errorMessage then
+    -- `self.socket.receive` failed
+    return nil, errorMessage
+  end
+
+  if response then
+    if not response.ok then
+      return nil, response.message
+    else
+      return tonumber(response.volume)
+    end
   end
 end
 
